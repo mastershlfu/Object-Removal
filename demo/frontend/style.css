@@ -1,120 +1,117 @@
 :root {
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
+  --sidebar-width: 300px;
   --bg-dark: #0f172a;
-  --sidebar-bg: #1e293b;
-  --text-main: #f8fafc;
-  --border-color: #334155;
+  --bg-sidebar: #1e293b;
+  --panel-bg: #020617;
+  --border: #334155;
+  --text: #f1f5f9;
+  --primary: #6366f1;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --success: #10b981;
 }
+
+* { box-sizing: border-box; }
 
 body {
-  font-family: 'Inter', sans-serif;
-  margin: 0;
-  background-color: var(--bg-dark);
-  color: var(--text-main);
-  height: 100vh;
+  margin: 0; padding: 0;
   overflow: hidden;
+  background: var(--bg-dark);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
 }
 
-.app-container {
-  display: flex;
-  height: 100vh;
-}
+.app-container { display: flex; width: 100vw; height: 100vh; }
 
-/* Sidebar */
+/* SIDEBAR */
 .sidebar {
-  width: 320px;
-  background-color: var(--sidebar-bg);
-  border-right: 1px solid var(--border-color);
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  box-shadow: 4px 0 15px rgba(0,0,0,0.3);
-  z-index: 10;
+  width: var(--sidebar-width); min-width: var(--sidebar-width);
+  background: var(--bg-sidebar); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 20px; gap: 20px;
+  z-index: 10; overflow-y: auto;
 }
 
-.logo {
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin-bottom: 10px;
-  color: #818cf8;
-}
+.logo { font-size: 1.2rem; font-weight: 700; color: #a5b4fc; margin-bottom: 5px; }
+.step-label { font-size: 0.7rem; font-weight: 700; color: #94a3b8; margin-bottom: 8px; letter-spacing: 0.5px; text-transform: uppercase; }
 
-/* Buttons */
-.upload-btn {
-  display: block;
-  background: #334155;
-  padding: 12px;
-  text-align: center;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.2s;
-  border: 1px dashed #64748b;
-}
-
-.upload-btn:hover { background: #475569; }
-.upload-btn input { display: none; }
+.control-group { display: flex; flex-direction: column; gap: 10px; }
 
 .btn {
-  width: 100%;
-  padding: 12px;
-  border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-bottom: 10px;
-  transition: all 0.2s;
+  padding: 12px; border: none; border-radius: 6px;
+  color: white; font-weight: 600; cursor: pointer;
+  transition: opacity 0.2s; text-align: left;
+}
+.btn:hover { opacity: 0.9; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
+
+.btn-primary { background: var(--primary); }
+.btn-warning { background: var(--warning); color: #000; }
+.btn-danger { background: var(--danger); }
+
+.upload-btn {
+  display: block; padding: 12px;
+  background: #334155; border: 1px dashed #64748b;
+  border-radius: 6px; cursor: pointer; text-align: center;
+}
+.upload-btn:hover { background: #475569; }
+input[type="file"] { display: none; }
+
+/* CHECKLIST STYLE */
+.class-list {
+  background: #0f172a; padding: 5px; border-radius: 6px;
+  max-height: 250px; overflow-y: auto; border: 1px solid var(--border);
+}
+.class-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px; border-bottom: 1px solid #1e293b;
+  transition: background 0.2s;
+}
+.class-item:hover { background: #1e293b; }
+.class-item:last-child { border-bottom: none; }
+.class-item label { flex: 1; cursor: pointer; font-size: 0.9rem; }
+.class-item input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--danger); cursor: pointer; }
+.badge { background: #334155; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; color: #cbd5e1; }
+
+.spacer { flex: 1; }
+.shortcuts { font-size: 0.8rem; color: #94a3b8; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 6px; }
+.shortcuts ul { padding-left: 20px; margin: 5px 0 0 0; }
+
+/* WORKSPACE */
+.workspace {
+  flex: 1; display: grid; grid-template-columns: 1fr 1fr 1fr;
+  background: var(--border); gap: 1px;
 }
 
-.btn-primary { background: var(--primary); color: white; }
-.btn-primary:hover { background: var(--primary-hover); }
-.btn-success { background: #10b981; color: white; }
-.btn-success:hover { background: #059669; }
+.panel {
+  background: var(--panel-bg); display: flex; flex-direction: column;
+  position: relative; overflow: hidden; min-width: 0;
+}
 
-/* Canvas Area */
-.main-content {
-  flex-grow: 1;
-  overflow: auto;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 40px;
+.panel-header {
+  height: 40px; background: #1e293b; display: flex; align-items: center; justify-content: center;
+  font-weight: 600; font-size: 0.9rem; color: #e2e8f0; border-bottom: 1px solid var(--border);
+  z-index: 5; flex-shrink: 0;
+}
+
+.canvas-wrapper, .result-wrapper {
+  flex: 1; width: 100%; height: 100%; position: relative; overflow: hidden;
   background-image: radial-gradient(#334155 1px, transparent 1px);
-  background-size: 20px 20px; /* Hiệu ứng lưới dot */
+  background-size: 20px 20px;
+  background-color: #020617;
 }
 
-.canvas-wrapper {
-  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-  background-color: #000;
-  border-radius: 4px;
-  overflow: hidden;
+/* FIX SCALE & CENTER */
+.canvas-container, #resultImage {
+  position: absolute !important;
+  top: 50% !important; left: 50% !important;
+  transform-origin: center center;
+  box-shadow: 0 0 30px rgba(0,0,0,0.5);
 }
+#resultImage { display: block; max-width: none; }
 
-/* JSON Output */
-.output-container {
-  flex-grow: 1;
-  display: flex;
-  flex-direction: column;
+.hidden { display: none !important; }
+.loading {
+  position: absolute; inset: 0; background: rgba(0,0,0,0.8);
+  color: var(--primary); font-weight: bold; font-size: 1.2rem;
+  display: flex; align-items: center; justify-content: center; z-index: 20;
 }
-
-pre {
-  background: #020617;
-  padding: 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  color: #34d399;
-  border: 1px solid var(--border-color);
-  height: 200px;
-  overflow-y: auto;
-}
-
-.shortcuts {
-  font-size: 13px;
-  color: #94a3b8;
-  background: rgba(0,0,0,0.2);
-  padding: 10px;
-  border-radius: 8px;
-}
-.shortcuts h4 { margin: 0 0 5px 0; color: #cbd5e1; }
-.shortcuts ul { padding-left: 15px; margin: 0; }

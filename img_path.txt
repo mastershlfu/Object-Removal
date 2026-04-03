@@ -1,1 +1,1 @@
-/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/data/Untitled.jpeg
+/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/data/LaMa_test_images/images/Untitled.jpeg

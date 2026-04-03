@@ -257,7 +257,7 @@ with gr.Blocks(title="Object Removal") as demo:
         fn=gradio_process,
         inputs=[input_editor, text_prompt],
         outputs=[output_mask, output_coarse, output_final, status_text],
-        api_name=False 
+        api_name=False
     )
 
 if __name__ == "__main__":

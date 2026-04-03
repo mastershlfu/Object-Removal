@@ -1,0 +1,11 @@
+2026-02-09 17:30:55 | INFO     |  Log file created at: ./models/refinement_logs/log_Refinement_Train_20260209_173055.txt
+2026-02-09 17:31:02 | INFO     | ========================================
+2026-02-09 17:31:02 | INFO     |    STARTING REFINEMENT TRAINING
+2026-02-09 17:31:02 | INFO     |    Device: cuda
+2026-02-09 17:31:02 | INFO     |    Batch Size: 16
+2026-02-09 17:31:02 | INFO     |    Learning Rate: 0.0002
+2026-02-09 17:31:02 | INFO     | ========================================
+2026-02-09 17:31:04 | INFO     |   Loading Models...
+2026-02-09 17:31:04 | INFO     |   Loading Dataset from: /home/ml4u/BKTeam/source/BaoNhi/Object-Removal/data/Places2
+2026-02-09 17:31:04 | INFO     |   Dataset size: 36500 images
+2026-02-09 17:31:05 | INFO     |   Training Loop Started...

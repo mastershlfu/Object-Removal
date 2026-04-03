@@ -44,7 +44,7 @@ lama-coarse2:
 
 lama-coarse3:
 	cd src/mask && \
-	python generate_sam_mask_and_coarse.py --start 24000 --end 36501
+	python generate_sam_mask_and_coarse.py --start 36302 --end 36441
 
 test-check-repaint:
 	cd src/pipeline && \
@@ -58,9 +58,13 @@ demo-pipeline:
 	cd demo && \
 	python demo_repaint.py
 
+demoCNN-pipeline:
+	cd demo && \
+	python demo_CNN.py
+
 train-cnn:
 	cd src/refinement && \
-	python train.py --epochs 5 --batch_size 16
+	python train.py --epochs 20 --batch_size 16
 
 run-backend:
 	@echo "🚀 Starting Backend với PYTHONPATH tại: $(PWD)"
