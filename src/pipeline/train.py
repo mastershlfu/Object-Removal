@@ -8,7 +8,9 @@ sys.path.append(project_root)
 import torch
 import torchvision
 from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2
+from torchvision.models.detection import maskrcnn_resnet50_fpn_v2
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 from torch.utils.data import DataLoader, Dataset
 from pycocotools.coco import COCO
 import os
@@ -24,7 +26,8 @@ from src.utils.logger import Logger
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 PROJECT_NAME = "Object Removal"
 OUTPUT_DIR = "./models/faster_rcnn_logs"
-RESUME_CHECKPOINT = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/src/pipeline/models/faster_rcnn_logs/fasterrcnn_epoch_0.pth"
+#RESUME_CHECKPOINT = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/src/pipeline/models/faster_rcnn_logs/fasterrcnn_epoch_0.pth"
+RESUME_CHECKPOINT = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/src/pipeline/models/faster_rcnn_logs/maskrcnn_epoch_0.pth"
 BATCH_SIZE = 8 
 NUM_EPOCHS = 10
 LR = 0.005
@@ -139,18 +142,23 @@ def collate_fn(batch):
 
 # --- BUILD MODEL ---
 def get_model(num_classes):
-    model = fasterrcnn_resnet50_fpn_v2(weights="DEFAULT")
-    
+    #model = fasterrcnn_resnet50_fpn_v2(weights="DEFAULT")
+    model = maskrcnn_resnet50_fpn_v2(weights="None")
     # Thay Head để phù hợp số class
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
     
+    #Thay doi MaskPredictor
+    in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
+    hidden_layer = 256
+    model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask, hidden_layer, num_classes)
+
     return model
 
 # --- TRAINING LOOP ---
 def main():
-    log = Logger(output_dir=OUTPUT_DIR, name="FasterRCNN_Train")
-    
+    #log = Logger(output_dir=OUTPUT_DIR, name="FasterRCNN_Train")
+    log = Logger(output_dir=OUTPUT_DIR, name="MaskRCNN_Train")
     log.info("==========================================")
     log.info(f"   STARTING TRAINING PIPELINE: {PROJECT_NAME}")
     log.info(f"   Device: {DEVICE}")
@@ -262,7 +270,7 @@ def main():
         wandb.log({"epoch_avg_loss": avg_loss, "epoch": epoch+1})
         
         # [RESUME]
-        ckpt_path = os.path.join(OUTPUT_DIR, f"fasterrcnn_epoch_{epoch}.pth")
+        ckpt_path = os.path.join(OUTPUT_DIR, f"maskrcnn_epoch_{epoch}.pth")
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),

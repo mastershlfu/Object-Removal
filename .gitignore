@@ -1,0 +1,32 @@
+# Bỏ qua file biến môi trường chứa Key
+.env
+
+# Bỏ qua thư mục môi trường ảo (nếu có dùng)
+venv/
+env/
+.venv/
+
+# Bỏ qua các file rác của Python
+__pycache__/
+*.pyc
+
+# Bỏ qua file dữ liệu lớn (tránh bị lỗi push do file quá nặng)
+*.jsonl
+*.json
+
+# Bỏ qua data
+data
+data/
+/data
+
+# Bỏ qua wandb
+wandb/
+wandb
+
+# Bỏ qua output
+outputs/
+outputs
+
+# Bỏ qua test_sets
+test_sets/
+test_sets

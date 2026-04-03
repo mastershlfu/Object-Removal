@@ -233,6 +233,7 @@ import clip
 
 from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor #Change the arch
 
 # SAM
 from segment_anything import sam_model_registry, SamPredictor
@@ -259,7 +260,7 @@ COCO_INSTANCE_CATEGORY_NAMES = [
 ]
 
 class ObjectRemovalSystem:
-    def __init__(self, rcnn_path, sam_path, repaint_conf_path, device="cuda"):
+    def __init__(self, rcnn_path, sam_path, lama_path, device="cuda"):
         self.device = device
         print("  Initializing Object Removal Pipeline...")
         
@@ -275,14 +276,15 @@ class ObjectRemovalSystem:
         self.clip_model, self.clip_preprocess = clip.load("ViT-B/32", device=device)
         
         # 4. LaMa
-        # self.lama = LaMaInpainter(lama_path, device=device)
-        self.repaint_conf = RePaintInpainter(repaint_conf_path, device=device)
+        self.lama = LaMaInpainter(lama_path, device=device)
+        # self.repaint_conf = RePaintInpainter(repaint_conf_path, device=device)
         
         print("  System Ready!")
 
     def _load_rcnn_model(self, path):
         print(f"  Loading Faster R-CNN from {path}...")
         model = fasterrcnn_resnet50_fpn_v2(weights=None)
+        
         in_features = model.roi_heads.box_predictor.cls_score.in_features
         model.roi_heads.box_predictor = FastRCNNPredictor(in_features, 91)
         
@@ -457,14 +459,14 @@ class ObjectRemovalSystem:
         dilated_mask = cv2.dilate(combined_mask, kernel, iterations=1)
 
         # --- 4. LAMA ---
-        # print("🎨 Running LaMa Inpainting...")
-        # inpainted_image = self.lama.inpaint(image_sam, dilated_mask)
-        print("  Running RePaint (Diffusion) to create Coarse Image...")
-        coarse_image = self.repaint_conf.inpaint(image_input, dilated_mask)
-        mask_bool = (dilated_mask > 127).astype(np.float32) / 255.0
-        mask_3ch = np.expand_dims(mask_bool, axis=-1)
+        print("🎨 Running LaMa Inpainting...")
+        inpainted_image = self.lama.inpaint(image_sam, dilated_mask)
+        # print("  Running RePaint (Diffusion) to create Coarse Image...")
+        # coarse_image = self.repaint_conf.inpaint(image_input, dilated_mask)
+        # mask_bool = (dilated_mask > 127).astype(np.float32) / 255.0
+        # mask_3ch = np.expand_dims(mask_bool, axis=-1)
         
-        coarse_cleaned = (image_input.astype(np.float32) * (1 - mask_3ch) + 
-                          coarse_image.astype(np.float32) * mask_3ch).astype(np.uint8)
+        # coarse_cleaned = (image_input.astype(np.float32) * (1 - mask_3ch) + 
+        #                   coarse_image.astype(np.float32) * mask_3ch).astype(np.uint8)
 
-        return dilated_mask, coarse_cleaned, f"  Đã xóa {len(final_boxes)} vật thể!"
+        return dilated_mask, inpainted_image, f"  Đã xóa {len(final_boxes)} vật thể!"

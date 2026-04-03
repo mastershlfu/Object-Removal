@@ -3,48 +3,84 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pro Annotator | Bounding Box Tool</title>
+  <title>Object Remover Workbench</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
   <link rel="stylesheet" href="style.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 
 <body>
 
 <div class="app-container">
+  <!-- SIDEBAR -->
   <aside class="sidebar">
-    <div class="logo">📦 ProAnnotator</div>
+    <div class="logo">RemoveObject</div>
     
+    <!-- STEP 1 -->
     <div class="control-group">
+      <div class="step-label">1. INPUT SOURCE</div>
       <label class="upload-btn">
         <input type="file" id="upload" accept="image/*" />
-        📁 Tải ảnh lên
+        📁 Upload Image
       </label>
     </div>
 
+    <!-- STEP 2 -->
     <div class="control-group">
-      <button id="drawBtn" class="btn btn-primary">✏️ Chế độ vẽ: TẮT</button>
-      <button id="submitBtn" class="btn btn-success">✅ Xuất dữ liệu JSON</button>
+      <div class="step-label">2. DETECTION</div>
+      <button id="drawBtn" class="btn btn-primary">✏️ Mode: VIEW</button>
+      <button id="scanBtn" class="btn btn-warning">🔍 1. Scan Objects</button>
+    </div>
+
+    <!-- STEP 3 -->
+    <div id="classFilterSection" class="class-filter-container hidden">
+      <div class="step-label">3. CLASS FILTER (Select/Deselect)</div>
+      <div id="classList" class="class-list"></div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- STEP 4 -->
+    <div class="control-group">
+      <button id="removeBtn" class="btn btn-danger" disabled>✨ 2. Remove Selected (Red)</button>
     </div>
 
     <div class="shortcuts">
-      <h4>Phím tắt</h4>
+      <h4>Guide</h4>
       <ul>
-        <li><span>Del</span> Xóa box được chọn</li>
-        <li><span>Drag</span> Di chuyển/Resize box</li>
+        <li><span style="color:#ef4444">■ Red Box</span>: Will be removed</li>
+        <li><span style="color:#10b981">□ Green Box</span>: Will be kept</li>
+        <li><kbd>Click</kbd> Toggle Box State</li>
       </ul>
-    </div>
-
-    <div class="output-container">
-      <h4>Output JSON</h4>
-      <pre id="output">[]</pre>
     </div>
   </aside>
 
-  <main class="main-content">
-    <div class="canvas-wrapper">
-      <canvas id="canvas"></canvas>
-    </div>
+  <!-- WORKSPACE -->
+  <main class="workspace">
+      <!-- Panel 1 -->
+      <div class="panel">
+          <div class="panel-header">1. ROI Area</div>
+          <div class="canvas-wrapper" id="wrap1">
+              <canvas id="canvasROI"></canvas>
+          </div>
+      </div>
+
+      <!-- Panel 2 -->
+      <div class="panel">
+          <div class="panel-header">2. Select Objects</div>
+          <div class="canvas-wrapper" id="wrap2">
+              <canvas id="canvasDetect"></canvas>
+          </div>
+          <div id="loadingOverlay" class="loading hidden">Processing...</div>
+      </div>
+
+      <!-- Panel 3 -->
+      <div class="panel">
+          <div class="panel-header">3. Result</div>
+          <div class="result-wrapper" id="wrap3">
+              <img id="resultImage" />
+          </div>
+      </div>
   </main>
 </div>
 

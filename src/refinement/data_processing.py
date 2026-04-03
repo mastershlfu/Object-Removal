@@ -6,11 +6,14 @@ import glob
 import os
 
 class InpaintingDataset(Dataset):
-    def __init__(self, coarse_root, img_size=512):
-        self.gt_paths = sorted(glob.glob(os.path.join(coarse_root, "gt", "*.png")))
-        self.mask_paths = sorted(glob.glob(os.path.join(coarse_root, "gt_keep_mask", "*.png")))
-        self.coarse_paths = sorted(glob.glob(os.path.join(coarse_root, "inpainted", "*.png")))
+    def __init__(self, coarse_root, img_size=256):
+        self.gt_paths = sorted(glob.glob(os.path.join(coarse_root, "val_large", "*.jpg")))
+        self.mask_paths = sorted(glob.glob(os.path.join(coarse_root, "masks", "*.jpg")))
+        self.coarse_paths = sorted(glob.glob(os.path.join(coarse_root, "coarse_images", "*.jpg")))
         self.img_size = img_size
+        
+        assert len(self.gt_paths) == len(self.coarse_paths), \
+            f"Số lượng GT ({len(self.gt_paths)}) và Coarse ({len(self.coarse_paths)}) không khớp!"
         # print("gt path: ", os.path.join(coarse_root, "gt", "*.png"))
         # print("mask path: ", os.path.join(coarse_root, "gt_masked", "*.png"))
         # print("coarse path: ", self.coarse_paths)
@@ -47,6 +50,9 @@ class InpaintingDataset(Dataset):
         gt = cv2.imread(self.gt_paths[idx])
         mask = cv2.imread(self.mask_paths[idx], cv2.IMREAD_GRAYSCALE)
         coarse = cv2.imread(self.coarse_paths[idx])
+        
+        gt = cv2.resize(gt, (self.img_size, self.img_size))
+        coarse = cv2.resize(coarse, (self.img_size, self.img_size))
         
         gt = cv2.cvtColor(gt, cv2.COLOR_BGR2RGB)
         coarse = cv2.cvtColor(coarse, cv2.COLOR_BGR2RGB)

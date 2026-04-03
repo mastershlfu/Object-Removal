@@ -9,6 +9,8 @@ class SemanticInpainter:
         self.pipe = StableDiffusionInpaintPipeline.from_pretrained(
             "runwayml/stable-diffusion-inpainting",
             torch_dtype=torch.float16,
+            use_safetensors=True,
+            variant="fp16"       
         ).to(device)
         self.pipe.enable_attention_slicing()
 

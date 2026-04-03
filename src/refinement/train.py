@@ -16,18 +16,22 @@ import numpy as np
 
 # Import Logger
 from src.utils.logger import Logger
+from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
+from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 
 # Import các module của bạn
 from src.refinement.network import RefinementUNet
 from src.refinement.loss import InpaintingLoss
 from src.refinement.data_processing import InpaintingDataset
 from src.inpaint.lama import LaMaInpainter
+from src.inpaint.semantic_sd import SemanticInpainter
 from src.utils.gaussian_blur import gaussian_blur
+
 
 # --- CONFIG ---
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LAMA_PATH = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/models/lama/big-lama.pt"
-DATA_DIR = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/outputs/repaint_test" 
+DATA_DIR = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/data/Places2" 
 LOG_DIR = "./models/refinement_logs"
 BATCH_SIZE = 8
 LR = 2e-4
@@ -37,6 +41,12 @@ SAVE_INTERVAL = 1 # Lưu checkpoint mỗi bao nhiêu epoch
 def train():
     # 1. Setup Logger
     log = Logger(output_dir=LOG_DIR, name="Refinement_Train")
+    
+    # 4. Khởi tạo Metrics 
+    psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(DEVICE)
+    ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(DEVICE)
+    # LPIPS mặc định dùng mạng VGG, giá trị càng thấp càng giống người nhìn
+    lpips_metric = LearnedPerceptualImagePatchSimilarity(net_type='vgg').to(DEVICE)
     
     log.info("========================================")
     log.info(f"   STARTING REFINEMENT TRAINING")
@@ -94,6 +104,7 @@ def train():
             # mask = (mask > 0.5).float()
             mask_soft = gaussian_blur(mask, kernel_size=11, sigma=3.0) 
             
+            # CNN Predict
             # refined_pred = refine_net(coarse_img, mask)
             refined_pred = refine_net(coarse_img, 1.0 - mask)
             
@@ -119,12 +130,32 @@ def train():
             
             # Log chi tiết mỗi 100 batch
             if batch_idx % 100 == 0:
+                with torch.no_grad():
+                    # Đảm bảo các ảnh ở dải [0, 1] trước khi tính metric
+                    # Tính trên final_output (ảnh đã được dán đè/blend)
+                    
+                    p_score = psnr_metric(final_output, gt_img)
+                    s_score = ssim_metric(final_output, gt_img)
+                    
+                    # LPIPS yêu cầu input chuẩn hóa về [-1, 1] hoặc dải đặc thù tùy bản,
+                    # nhưng torchmetrics thường tự xử lý nếu bạn đưa vào [0, 1].
+                    l_score = lpips_metric(final_output, gt_img)
+
+                    # LOG CẢ LAMA VÀ REFINED ĐỂ SO SÁNH TRÊN WANDB
+                    p_score_lama = psnr_metric(coarse_img, gt_img)
+                    l_score_lama = lpips_metric(coarse_img, gt_img)
+                
                 wandb.log({
                     "batch_loss": loss.item(),
                     "l1_loss": loss_dict["l1"],
                     "perc_loss": loss_dict["perc"],
                     "style_loss": loss_dict["style"],
-                    "grad_loss": loss_dict["grad"]
+                    "grad_loss": loss_dict["grad"],
+                    "metrics/PSNR": p_score.item(),
+                    "metrics/SSIM": s_score.item(),
+                    "metrics/LPIPS": l_score.item(),
+                    "compare/PSNR_improvement": p_score.item() - p_score_lama.item(),
+                    "compare/LPIPS_improvement": l_score_lama.item() - l_score.item() # LPIPS càng thấp càng tốt
                 })
 
             # Log hình ảnh mỗi 500 batch để kiểm tra tiến độ
@@ -138,7 +169,7 @@ def train():
                 vis_np = vis.permute(1, 2, 0).detach().cpu().numpy()
                 vis_np = np.clip(vis_np, 0, 1)
                 
-                wandb.log({"visual_results": [wandb.Image(vis_np, caption="Input | RePaint | Refined | GT")]})
+                wandb.log({"visual_results": [wandb.Image(vis_np, caption="Input | LaMa | Refined | GT")]})
 
         # End of Epoch
         avg_loss = epoch_loss / len(dataloader)
