@@ -8,9 +8,7 @@ sys.path.append(project_root)
 import torch
 import torchvision
 from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2
-from torchvision.models.detection import maskrcnn_resnet50_fpn_v2
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 from torch.utils.data import DataLoader, Dataset
 from pycocotools.coco import COCO
 import os
@@ -25,12 +23,16 @@ from src.utils.logger import Logger
 
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 PROJECT_NAME = "Object Removal"
-OUTPUT_DIR = "./models/faster_rcnn_logs"
-#RESUME_CHECKPOINT = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/src/pipeline/models/faster_rcnn_logs/fasterrcnn_epoch_0.pth"
-RESUME_CHECKPOINT = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/src/pipeline/models/faster_rcnn_logs/maskrcnn_epoch_0.pth"
+OUTPUT_DIR = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/models/faster-rcnn_checkpoint"
+RESUME_CHECKPOINT = None
 BATCH_SIZE = 8 
-NUM_EPOCHS = 10
-LR = 0.005
+NUM_EPOCHS = 24
+LR = 0.0005  # LR for RPN and ROI heads (frozen backbone)
+LR_BACKBONE = 0.001  # Higher LR for backbone after unfreeze
+WARMUP_STEPS = 500  # Warmup steps
+UNFREEZE_EPOCH = 3  # Epoch to unfreeze backbone
+GRAD_CLIP = 1.0
+NUM_CLASSES = 81  # COCO 80 classes + 1 background
 
 def blockPrint():
     sys.stdout = open(os.devnull, 'w')
@@ -45,6 +47,9 @@ class COCODataset(Dataset):
         self.coco = COCO(annFile)
         
         blockPrint()
+        
+        cat_ids = sorted(self.coco.getCatIds())
+        self.cat2label = {cat_id: i + 1 for i, cat_id in enumerate(cat_ids)}
         
         self.ids = []
         for img_id in sorted(self.coco.imgs.keys()):
@@ -61,6 +66,8 @@ class COCODataset(Dataset):
         ann_ids = coco.getAnnIds(imgIds=img_id)
         coco_annotation = coco.loadAnns(ann_ids)
         
+        # print(coco.loadImgs(img_id)[0])
+        # assert False
         path = coco.loadImgs(img_id)[0]['file_name']
         img = Image.open(os.path.join(self.root, path)).convert("RGB")
         img_np = np.array(img)
@@ -85,7 +92,8 @@ class COCODataset(Dataset):
             
             if (xmax - xmin) > 1 and (ymax - ymin) > 1:
                 boxes.append([xmin, ymin, xmax, ymax])
-                labels.append(coco_annotation[i]['category_id'])
+                # labels.append(coco_annotation[i]['category_id'])
+                labels.append(self.cat2label[coco_annotation[i]['category_id']])
 
         target = {}
         
@@ -97,8 +105,13 @@ class COCODataset(Dataset):
                     new_boxes = transformed['bboxes']
                     new_labels = transformed['labels']
                 except ValueError as e:
+                    # transform_only = A.Compose([
+                    #     A.Resize(800, 800),
+                    #     ToTensorV2()
+                    # ])
                     transform_only = A.Compose([
-                        A.Resize(800, 800),
+                        A.LongestMaxSize(max_size=800),
+                        A.PadIfNeeded(800, 800),
                         ToTensorV2()
                     ])
                     transformed = transform_only(image=img_np)
@@ -106,8 +119,13 @@ class COCODataset(Dataset):
                     new_boxes = []
                     new_labels = []
             else:
+                # transform_only = A.Compose([
+                #     A.Resize(800, 800),
+                #     ToTensorV2()
+                # ])
                 transform_only = A.Compose([
-                    A.Resize(800, 800),
+                    A.LongestMaxSize(max_size=800),
+                    A.PadIfNeeded(800, 800),
                     ToTensorV2()
                 ])
                 transformed = transform_only(image=img_np)
@@ -142,53 +160,58 @@ def collate_fn(batch):
 
 # --- BUILD MODEL ---
 def get_model(num_classes):
-    #model = fasterrcnn_resnet50_fpn_v2(weights="DEFAULT")
-    model = maskrcnn_resnet50_fpn_v2(weights="None")
-    # Thay Head để phù hợp số class
+    model = fasterrcnn_resnet50_fpn_v2(weights='DEFAULT')  # Pretrained on COCO
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
     
-    #Thay doi MaskPredictor
-    in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
-    hidden_layer = 256
-    model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask, hidden_layer, num_classes)
-
+    # Freeze backbone initially (train only RPN + ROI heads)
+    for param in model.backbone.parameters():
+        param.requires_grad = False
+        
     return model
 
 # --- TRAINING LOOP ---
 def main():
-    #log = Logger(output_dir=OUTPUT_DIR, name="FasterRCNN_Train")
-    log = Logger(output_dir=OUTPUT_DIR, name="MaskRCNN_Train")
+    log = Logger(output_dir=OUTPUT_DIR, name="FasterRCNN_Train")
     log.info("==========================================")
     log.info(f"   STARTING TRAINING PIPELINE: {PROJECT_NAME}")
     log.info(f"   Device: {DEVICE}")
     log.info(f"   Batch Size: {BATCH_SIZE}")
+    log.info(f"   Learning Rate: {LR} (RPN/ROI), {LR_BACKBONE} (backbone after unfreeze)")
+    log.info(f"   Epochs: {NUM_EPOCHS}")
+    log.info(f"   Warmup: {WARMUP_STEPS} steps")
+    log.info(f"   Unfreeze backbone at epoch: {UNFREEZE_EPOCH}")
     log.info("==========================================")
     
     wandb.init(
         project=PROJECT_NAME,
-        name="faster-rcnn-resnet50-run-1",
+        name="faster-rcnn-finetune-v3",
         config={
             "learning_rate": LR,
-            "architecture": "Faster R-CNN ResNet50",
+            "learning_rate_backbone": LR_BACKBONE,
+            "warmup_steps": WARMUP_STEPS,
+            "unfreeze_epoch": UNFREEZE_EPOCH,
+            "architecture": "Faster R-CNN ResNet50 FPN V2",
             "dataset": "COCO-2017",
             "epochs": NUM_EPOCHS,
-            "batch_size": BATCH_SIZE
+            "batch_size": BATCH_SIZE,
+            "grad_clip": GRAD_CLIP
         }
     )
     
     # Transform
     train_transform = A.Compose([
-        A.Resize(800, 800), 
+        A.LongestMaxSize(max_size=800),
+        A.PadIfNeeded(800, 800),
         A.HorizontalFlip(p=0.5),
-        ToTensorV2() # (H, W, C) -> (C, H, W)
+        ToTensorV2()
     ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))
 
     log.info("  Loading Dataset...")
     # Dataset
     dataset = COCODataset(
-        root='/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/data/coco/train2017',
-        annFile='/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/data/coco/annotations/instances_train2017.json',
+        root='/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/data/coco/images/train2017',
+        annFile='/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/data/coco/annotations/org_instances_train2017.json',
         transforms=train_transform
     )
     
@@ -205,40 +228,70 @@ def main():
     
     log.info("  Building Model Faster R-CNN ResNet50...")
     # Model Setup
-    model = get_model(num_classes=91)
+    model = get_model(num_classes=NUM_CLASSES)
     model.to(DEVICE)
 
-    # Optimizer
-    params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.SGD(params, lr=LR, momentum=0.9, weight_decay=0.0005)
+    # Optimizer - separate LR for backbone vs heads
+    backbone_params = [p for n, p in model.named_parameters() if 'backbone' in n and p.requires_grad]
+    head_params = [p for n, p in model.named_parameters() if 'backbone' not in n and p.requires_grad]
+    
+    param_groups = [
+        {'params': backbone_params, 'lr': LR_BACKBONE if len(backbone_params) > 0 else LR},
+        {'params': head_params, 'lr': LR}
+    ]
+    
+    optimizer = torch.optim.SGD(param_groups, momentum=0.9, weight_decay=0.0005)
+    
+    # LR Scheduler - StepLR every 8 epochs
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.1)
     
     start_epoch = 0
     if RESUME_CHECKPOINT is not None and os.path.exists(RESUME_CHECKPOINT):
         log.info(f"  Resuming training from: {RESUME_CHECKPOINT}")
         checkpoint = torch.load(RESUME_CHECKPOINT, map_location=DEVICE)
         
-        # Load weights model
         if 'model_state_dict' in checkpoint:
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             start_epoch = checkpoint['epoch'] + 1
             log.info(f"  Loaded checkpoint. Resuming from Epoch {start_epoch + 1}")
         else:
-            # Fallback nếu lỡ dùng file .pth cũ (chỉ chứa weights)
             model.load_state_dict(checkpoint)
             log.warning("  Old checkpoint format detected (weights only). Optimizer state reset.")
     else:
-        log.info("  Starting training from scratch...")
+        log.info("  Starting fine-tuning with pretrained weights...")
 
     log.info("  Training Loop Started...")
     wandb.watch(model, log="all")
+    
+    global_step = start_epoch * len(data_loader)
     
     for epoch in range(start_epoch, NUM_EPOCHS):
         model.train()
         epoch_loss = 0
         start_time = datetime.now()
         
+        # Unfreeze backbone at specified epoch
+        if epoch == UNFREEZE_EPOCH:
+            log.info("  Unfreezing backbone and increasing LR...")
+            for param in model.backbone.parameters():
+                param.requires_grad = True
+            # Rebuild optimizer with higher LR for backbone
+            backbone_params = [p for n, p in model.named_parameters() if 'backbone' in n and p.requires_grad]
+            head_params = [p for n, p in model.named_parameters() if 'backbone' not in n and p.requires_grad]
+            param_groups = [
+                {'params': backbone_params, 'lr': LR_BACKBONE},
+                {'params': head_params, 'lr': LR}
+            ]
+            optimizer = torch.optim.SGD(param_groups, momentum=0.9, weight_decay=0.0005)
+        
         for i, (images, targets) in enumerate(data_loader):
+            # Warmup: gradually increase LR from base_lr * 0.1 to base_lr
+            if global_step < WARMUP_STEPS:
+                warmup_factor = 0.1 + 0.9 * (global_step / WARMUP_STEPS)
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = param_group['lr'] * warmup_factor
+            
             images = list(image.to(DEVICE) for image in images)
             targets = [{k: v.to(DEVICE) for k, v in t.items()} for t in targets]
 
@@ -247,15 +300,31 @@ def main():
 
             optimizer.zero_grad()
             losses.backward()
+            
+            # Gradient clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
+            
             optimizer.step()
+            
+            # Restore LR after warmup adjustment
+            if global_step < WARMUP_STEPS:
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = param_group['lr'] / max(warmup_factor, 0.001)
 
             epoch_loss += losses.item()
 
-            wandb.log({
-                "batch_loss": losses.item(),
-                "cls_loss": loss_dict['loss_classifier'].item(),
-                "box_loss": loss_dict['loss_box_reg'].item()
+            # Log all loss components
+            wandb.log({ 
+                "batch_loss": losses.item(), 
+                "loss_classifier": loss_dict['loss_classifier'].item(),
+                "loss_box_reg": loss_dict['loss_box_reg'].item(),
+                "loss_objectness": loss_dict['loss_objectness'].item(),
+                "loss_rpn_box_reg": loss_dict['loss_rpn_box_reg'].item(),
+                "learning_rate": optimizer.param_groups[0]['lr'],
+                "global_step": global_step
             })
+            
+            global_step += 1
 
             if i % 50 == 0:
                 log.info(f"   Epoch [{epoch+1}/{NUM_EPOCHS}] | Batch [{i}/{len(data_loader)}] | Loss: {losses.item():.4f}")
@@ -266,11 +335,15 @@ def main():
         log.info(f"  EPOCH {epoch+1} FINISHED")
         log.info(f"   Duration: {duration}")
         log.info(f"   Avg Loss: {avg_loss:.4f}")
+        log.info(f"   Learning Rate: {optimizer.param_groups[0]['lr']:.6f}")
         
-        wandb.log({"epoch_avg_loss": avg_loss, "epoch": epoch+1})
+        # Step the scheduler
+        scheduler.step()
         
-        # [RESUME]
-        ckpt_path = os.path.join(OUTPUT_DIR, f"maskrcnn_epoch_{epoch}.pth")
+        wandb.log({"epoch_avg_loss": avg_loss, "epoch": epoch+1, "lr": optimizer.param_groups[0]['lr']})
+        
+        # Save checkpoint
+        ckpt_path = os.path.join(OUTPUT_DIR, f"fasterrcnn_epoch_{epoch}.pth")
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),

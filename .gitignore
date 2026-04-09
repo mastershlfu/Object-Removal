@@ -38,3 +38,7 @@ models/
 # Bỏ qua toàn bộ file .pth .pt
 **/*.pth
 **/*.pt
+
+# Bỏ qua AGENTS.md
+AGENTS.md
+allfiles.txt
