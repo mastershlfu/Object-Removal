@@ -1,9 +1,0 @@
-2026-02-04 12:32:02 | INFO     |  Log file created at: ./models/refinement_logs/log_Refinement_Train_20260204_123202.txt
-2026-02-04 12:32:02 | INFO     | ========================================
-2026-02-04 12:32:02 | INFO     |    STARTING REFINEMENT TRAINING
-2026-02-04 12:32:02 | INFO     |    Device: cuda
-2026-02-04 12:32:02 | INFO     |    Batch Size: 16
-2026-02-04 12:32:02 | INFO     |    Learning Rate: 0.0002
-2026-02-04 12:32:02 | INFO     | ========================================
-2026-02-04 12:32:04 | INFO     |   Loading Models...
-2026-02-04 12:32:05 | INFO     |   Loading Dataset from: ./data/coarse_images

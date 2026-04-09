@@ -19,6 +19,8 @@ data
 data/
 /data
 
+src/pipeline/Detect_object/datasets/
+
 # Bỏ qua wandb
 wandb/
 wandb
@@ -30,3 +32,15 @@ outputs
 # Bỏ qua test_sets
 test_sets/
 test_sets
+
+# Bỏ qua models
+models
+models/
+
+# Bỏ qua toàn bộ file .pth .pt
+**/*.pth
+**/*.pt
+
+# Bỏ qua AGENTS.md
+AGENTS.md
+allfiles.txt
