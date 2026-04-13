@@ -6,8 +6,7 @@ import torchvision.transforms as T
 
 from utils.get_img import get_image_path_from_txt
 from segment_anything import sam_model_registry, SamPredictor
-from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from ultralytics import YOLO
 from PIL import Image
 from src.inpaint.lama import LaMaInpainter
 from transformers import pipeline
@@ -17,7 +16,6 @@ os.environ['HF_HOME'] = "/media/ml4u/Challenge-4TB/baonhi"
 
 # --- CẤU HÌNH ---
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-SAM_CHECKPOINT = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/models/sam_vit_h_4b8939.pth"
 MODEL_TYPE = "vit_h"
 IMAGE_PATH = get_image_path_from_txt()
 
@@ -25,20 +23,20 @@ INPUT_BOX = np.array([211, 526, 581, 1339])
 
 NUM_CLASSES = 91 
 
-COCO_INSTANCE_CATEGORY_NAMES = [
-    '__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
-    'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A', 'stop sign',
-    'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
-    'elephant', 'bear', 'zebra', 'giraffe', 'N/A', 'backpack', 'umbrella', 'N/A', 'N/A',
-    'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
-    'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
-    'bottle', 'N/A', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl',
-    'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza',
-    'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'N/A', 'dining table',
-    'N/A', 'N/A', 'toilet', 'N/A', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
-    'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'N/A', 'book',
-    'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
-]
+# COCO_INSTANCE_CATEGORY_NAMES = [
+#     '__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
+#     'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A', 'stop sign',
+#     'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
+#     'elephant', 'bear', 'zebra', 'giraffe', 'N/A', 'backpack', 'umbrella', 'N/A', 'N/A',
+#     'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
+#     'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
+#     'bottle', 'N/A', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl',
+#     'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza',
+#     'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'N/A', 'dining table',
+#     'N/A', 'N/A', 'toilet', 'N/A', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
+#     'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'N/A', 'book',
+#     'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+# ]
 
 class SDXLRefiner:
     def __init__(self, device=DEVICE):
@@ -101,12 +99,16 @@ class SDXLRefiner:
 
 
 class ObjectRemover:
-    def __init__(self, rcnn_path, sam_path, lama_path, img_path=IMAGE_PATH, device=DEVICE):
+    def __init__(self, yolov8x_path, yolov8m_finetuned_path, sam_path, lama_path, img_path=IMAGE_PATH, device=DEVICE):
         self.device = device
         self.img_path = img_path
 
-        # RCNN Detector
-        self.detector = self._load_faster_rcnn(rcnn_path)
+        # yolo Detector
+        self.yolo_general = YOLO(yolov8x_path)                      # v8x
+        self.yolo_general.to(self.device)
+
+        self.yolo_finetuned = YOLO(yolov8m_finetuned_path)          # v8m finetuned
+        self.yolo_finetuned.to(self.device)
 
         # SAM Predictor
         self.sam = sam_model_registry[MODEL_TYPE](checkpoint=sam_path)
@@ -124,21 +126,6 @@ class ObjectRemover:
             print(f"⚠️ Lỗi load SDXL: {e}")
             self.use_sdxl = False
 
-
-    def _load_faster_rcnn(self, model_path):
-        model = fasterrcnn_resnet50_fpn_v2(weights=None)
-        in_features = model.roi_heads.box_predictor.cls_score.in_features
-        model.roi_heads.box_predictor = FastRCNNPredictor(in_features, NUM_CLASSES)
-
-        ckpt = torch.load(model_path, map_location=self.device)
-        if "model_state_dict" in ckpt:
-            model.load_state_dict(ckpt["model_state_dict"])
-        else:
-            model.load_state_dict(ckpt)
-        
-        model.to(self.device)
-        model.eval()
-        return model
     
     def read_image(self):
         IMAGE_PATH = get_image_path_from_txt()
@@ -157,7 +144,7 @@ class ObjectRemover:
 
         for roi in roi_boxes:
             rx1, ry1, rx2, ry2 = map(int, [
-                roi.xmin, roi.ymin, roi.xmax, roi.ymax
+                roi['xmin'], roi['ymin'], roi['xmax'], roi['ymax']
             ])
 
             if x1 < rx2 and x2 > rx1 and y1 < ry2 and y2 > ry1:
@@ -166,40 +153,49 @@ class ObjectRemover:
         return False
 
 
-    def scan_for_objects(self, user_roi_boxes=None):
+    def scan_for_objects(self, user_roi_boxes=None, conf_threshold=0.5):
         img_rgb = self.read_image()
-        h, w = img_rgb.shape[:2]
+        detected_general = []
+        detected_custom = []
 
-        transform = T.Compose([T.ToTensor()])
-        img_tensor = transform(img_rgb).to(self.device)
-
-        with torch.no_grad():
-            predictions = self.detector([img_tensor])[0]
-
-        detected_objects = []
-
-        for i in range(len(predictions["boxes"])):
-            score = predictions["scores"][i].item()
-            if score < 0.5:
-                continue
-
-            box = predictions["boxes"][i].cpu().numpy()
-            label_id = predictions["labels"][i].item()
-
-            abs_box = box.tolist()
-
-            # nếu có ROI → check overlap
-            if user_roi_boxes is not None:
-                if not self._box_in_any_roi(abs_box, user_roi_boxes):
+        # --- HÀM XỬ LÝ KẾT QUẢ YOLO ---
+        def process_yolo_results(results, model, target_lst):
+            for box in results.boxes:
+                score = box.conf[0].item()
+                if score < conf_threshold:
                     continue
+                
+                # Trích xuất Box xyxy và ép về int 
+                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().tolist()
+                abs_box = [int(x1), int(y1), int(x2), int(y2)]
+                
+                label_id = int(box.cls[0].item())
+                label_name = model.names[label_id]
 
-            detected_objects.append({
-                "box": abs_box,
-                "label": COCO_INSTANCE_CATEGORY_NAMES[label_id],
-                "score": score
-            })
+                # Check ROI overlap (Nếu user có khoanh vùng)
+                if user_roi_boxes is not None:
+                    if not self._box_in_any_roi(abs_box, user_roi_boxes):
+                        continue
 
-        return detected_objects
+                target_lst.append({
+                    "box": abs_box,
+                    "label": label_name,
+                    "score": score
+                })
+
+        # --- CHẠY INFERENCE SONG SONG 2 MODEL ---
+        # 1. Chạy Model General
+        results_general = self.yolo_general.predict(img_rgb, verbose=False)[0]
+        process_yolo_results(results_general, self.yolo_general, detected_general)
+
+        # 2. Chạy Model Custom (12 Classes)
+        results_custom = self.yolo_finetuned.predict(img_rgb, verbose=False)[0]
+        process_yolo_results(results_custom, self.yolo_finetuned, detected_custom)
+
+        return {
+            "general_objects": detected_general,
+            "custom_objects": detected_custom
+        }
 
     
     def remove_objects(self, target_boxes):
@@ -216,7 +212,8 @@ class ObjectRemover:
         labels_to_remove = []
 
         for box in target_boxes:
-            input_box = np.array([box.xmin, box.ymin, box.xmax, box.ymax])
+            # Box là list/array dạng [x1, y1, x2, y2]
+            input_box = np.array([box['box'][0], box['box'][1], box['box'][2], box['box'][3]])
             masks, scores, _ = self.sam_predictor.predict(
                 box=input_box[None, :],
                 multimask_output=False
@@ -224,8 +221,8 @@ class ObjectRemover:
 
             full_mask[masks[0] > 0] = 255
 
-            if hasattr(box, 'label') and box.label:
-                labels_to_remove.append(box.label)
+            if 'label' in box and box['label']:
+                labels_to_remove.append(box['label'])
         
         unique_labels = list(set(labels_to_remove))
         dynamic_neg_prompt = ", ".join(unique_labels)
@@ -245,11 +242,11 @@ class ObjectRemover:
         if self.use_sdxl:
             print("Running SDXL Refiner...")
             final_result = self.sdxl.refine(lama_result, img_rgb, sdxl_mask, dynamic_neg_prompt, strength=0.9)
-            final_result = self.sdxl.refine(final_result, img_rgb, sdxl_mask, dynamic_neg_prompt, strength=0.35) 
+            final_result = self.sdxl.refine(final_result, img_rgb, sdxl_mask, dynamic_neg_prompt, strength=0.4) 
 
-            return final_result
+            return full_mask, lama_result, final_result
         
-        return img_rgb
+        return full_mask, img_rgb
 
 def main():
     print("🚀 Starting Object Removal Pipeline...")

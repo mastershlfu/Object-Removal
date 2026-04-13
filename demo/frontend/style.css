@@ -77,9 +77,24 @@ input[type="file"] { display: none; }
 .shortcuts ul { padding-left: 20px; margin: 5px 0 0 0; }
 
 /* WORKSPACE */
+/* Tìm class .workspace và thay thế bằng đoạn này */
 .workspace {
-  flex: 1; display: grid; grid-template-columns: 1fr 1fr 1fr;
-  background: var(--border); gap: 1px;
+  flex: 1; 
+  display: grid; 
+  grid-template-columns: repeat(3, 1fr); /* 3 Cột */
+  grid-template-rows: 1fr 1fr; /* 2 Hàng */
+  background: var(--border); 
+  gap: 1px;
+}
+
+/* Thêm css cho các img mới tạo */
+#resultMask, #resultOriginal, #resultLama, #resultSDXL { 
+    display: block; 
+    max-width: none; 
+    position: absolute !important;
+    top: 50% !important; left: 50% !important;
+    transform-origin: center center;
+    box-shadow: 0 0 30px rgba(0,0,0,0.5);
 }
 
 .panel {

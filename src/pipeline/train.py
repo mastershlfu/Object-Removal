@@ -25,14 +25,10 @@ from src.utils.logger import Logger
 
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 PROJECT_NAME = "Object Removal"
-<<<<<<< HEAD
-OUTPUT_DIR = "./models/faster_rcnn_logs"
-#RESUME_CHECKPOINT = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/src/pipeline/models/faster_rcnn_logs/fasterrcnn_epoch_0.pth"
-RESUME_CHECKPOINT = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/src/pipeline/models/faster_rcnn_logs/maskrcnn_epoch_0.pth"
-=======
+
 OUTPUT_DIR = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/models/faster-rcnn_checkpoint"
 RESUME_CHECKPOINT = None
->>>>>>> 2669e13
+
 BATCH_SIZE = 8 
 NUM_EPOCHS = 24
 LR = 0.0005  # LR for RPN and ROI heads (frozen backbone)
@@ -168,19 +164,7 @@ def collate_fn(batch):
 
 # --- BUILD MODEL ---
 def get_model(num_classes):
-<<<<<<< HEAD
-    #model = fasterrcnn_resnet50_fpn_v2(weights="DEFAULT")
-    model = maskrcnn_resnet50_fpn_v2(weights="None")
-    # Thay Head để phù hợp số class
-    in_features = model.roi_heads.box_predictor.cls_score.in_features
-    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
-    
-    #Thay doi MaskPredictor
-    in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
-    hidden_layer = 256
-    model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask, hidden_layer, num_classes)
 
-=======
     model = fasterrcnn_resnet50_fpn_v2(weights='DEFAULT')  # Pretrained on COCO
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
@@ -189,17 +173,13 @@ def get_model(num_classes):
     for param in model.backbone.parameters():
         param.requires_grad = False
         
->>>>>>> 2669e13
+
     return model
 
 # --- TRAINING LOOP ---
 def main():
-<<<<<<< HEAD
-    #log = Logger(output_dir=OUTPUT_DIR, name="FasterRCNN_Train")
-    log = Logger(output_dir=OUTPUT_DIR, name="MaskRCNN_Train")
-=======
     log = Logger(output_dir=OUTPUT_DIR, name="FasterRCNN_Train")
->>>>>>> 2669e13
+
     log.info("==========================================")
     log.info(f"   STARTING TRAINING PIPELINE: {PROJECT_NAME}")
     log.info(f"   Device: {DEVICE}")
@@ -367,15 +347,11 @@ def main():
         # Step the scheduler
         scheduler.step()
         
-<<<<<<< HEAD
-        # [RESUME]
-        ckpt_path = os.path.join(OUTPUT_DIR, f"maskrcnn_epoch_{epoch}.pth")
-=======
         wandb.log({"epoch_avg_loss": avg_loss, "epoch": epoch+1, "lr": optimizer.param_groups[0]['lr']})
         
         # Save checkpoint
         ckpt_path = os.path.join(OUTPUT_DIR, f"fasterrcnn_epoch_{epoch}.pth")
->>>>>>> 2669e13
+
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),

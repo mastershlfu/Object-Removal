@@ -11,10 +11,10 @@ from tqdm import tqdm
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 SDXL_VAE_PATH = "/media/ml4u/Challenge-4TB/baonhi/sdxl-inpaint-offline/vae" 
-PLACES2_DIR = "/path/to/your/places2/images" 
+PLACES2_DIR = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/data/Places/val_large" 
 
-OUTPUT_HQ = "./dataset/HQ"
-OUTPUT_LQ = "./dataset/LQ"
+OUTPUT_HQ = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/data/Places/dataset/HQ"
+OUTPUT_LQ = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/data/Places/dataset/LQ"
 CROP_SIZE = 256
 
 os.makedirs(OUTPUT_HQ, exist_ok=True)
@@ -22,7 +22,11 @@ os.makedirs(OUTPUT_LQ, exist_ok=True)
 
 print("🚀 Đang nạp VAE của SDXL...")
 # Tải VAE ở float16 để chạy cho lẹ, tiết kiệm VRAM
-vae = AutoencoderKL.from_pretrained(SDXL_VAE_PATH, torch_dtype=torch.float16).to(DEVICE)
+SDXL_VAE_FILE = "/media/ml4u/Challenge-4TB/baonhi/sdxl-inpaint-offline/vae/diffusion_pytorch_model.fp16.safetensors"
+vae = AutoencoderKL.from_single_file(
+    SDXL_VAE_FILE, 
+    torch_dtype=torch.float16
+).to(DEVICE)
 vae.eval()
 
 # Transform để đưa ảnh vào VAE (-1 đến 1)
@@ -79,6 +83,8 @@ def process_image(img_path, save_name):
     img_vae = decoded[0].cpu().permute(1, 2, 0).numpy()
     img_vae = (img_vae * 255).astype(np.uint8)
     
+    img_vae = cv2.GaussianBlur(img_vae, (3, 3), 0)
+    
     # 3. Trộn (Alpha Blending)
     mask = create_random_mask()
     # Mask = 1 (trắng): Lấy ảnh VAE nhão. Mask = 0 (đen): Lấy ảnh HQ nét.
@@ -91,7 +97,6 @@ def process_image(img_path, save_name):
 
 def main():
     # Quét tất cả ảnh trong thư mục Places2
-    # Cập nhật đuôi mở rộng nếu Places2 của bạn dùng .png
     image_paths = glob.glob(os.path.join(PLACES2_DIR, "**/*.jpg"), recursive=True)
     random.shuffle(image_paths) # Trộn ngẫu nhiên
     

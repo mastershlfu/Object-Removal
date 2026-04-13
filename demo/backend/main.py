@@ -6,6 +6,7 @@ import sys
 import torch
 import numpy as np
 import cv2
+import base64
 from fastapi.responses import Response
 
 from src.pipeline.remove_object import ObjectRemover
@@ -23,12 +24,13 @@ app.add_middleware(
 
 # Lấy dir ảnh để đồng bộ cho inference
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-IMAGE_DIR = os.path.join(project_root, "data", "LaMa_test_images", "images")
+IMAGE_DIR = os.path.join(project_root, "data")
 
 output_dir = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/outputs/demo"
 
 # CKPT paths
-RCNN_PATH = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/src/pipeline/models/faster_rcnn_logs/fasterrcnn_epoch_7.pth"
+YOLOV8x_PATH = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/models/yolov8x.pt"
+YOLOV8m_PATH = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/src/pipeline/models/yolov8/finetuned_yolo_v8/train_12_classes_v2/weights/epoch45.pt"
 SAM_PATH = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/models/sam_vit_h_4b8939.pth"
 LAMA_PATH = "/home/ml4u/BKTeam/source/BaoNhi/Object-Removal/models/lama/big-lama.pt"
 
@@ -42,7 +44,8 @@ def load_models():
     try:
         print("🚀 Đang khởi tạo ObjectRemover Pipeline...")
         pipeline = ObjectRemover(
-            rcnn_path=RCNN_PATH, 
+            yolov8x_path=YOLOV8x_PATH,
+            yolov8m_finetuned_path=YOLOV8m_PATH, 
             sam_path=SAM_PATH, 
             lama_path=LAMA_PATH)
         print("✅ Pipeline đã sẵn sàng!")
@@ -50,30 +53,44 @@ def load_models():
         print(f"❌ Lỗi khởi tạo pipeline: {e}")
         raise e
 
-class Box(BaseModel):
+class ROIBox(BaseModel):
     xmin: float
     ymin: float
     xmax: float
     ymax: float
-    label: str = ""
+
+class TargetObject(BaseModel):
+    box: list[float]  # Mảng [x1, y1, x2, y2]
+    label: str
+    score: float = 0.0
 
 class ScanPayload(BaseModel):
     image_name: str
-    boxes: list[Box]
+    boxes: list[ROIBox]
 
 class RemovePayload(BaseModel):
     image_name: str
-    target_boxes: list[Box]
+    target_boxes: list[TargetObject]
 
 @app.post("/submit_boxes")
 def submit_boxes(data: ScanPayload):
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline chưa sẵn sàng. Vui lòng thử lại sau.")
-    # ghep path
-    full_path = os.path.abspath(os.path.join(IMAGE_DIR, data.image_name))
     
-    # kiem tra path
-    file_exists = os.path.exists(full_path)
+    # --- HÀM TÌM KIẾM ĐỆ QUY TRONG THƯ MỤC DATA ---
+    def find_file_recursive(base_path, filename):
+        for root, dirs, files in os.walk(base_path):
+            if filename in files:
+                return os.path.join(root, filename)
+        return None
+
+    full_path = find_file_recursive(IMAGE_DIR, data.image_name)
+    
+    if full_path is None:
+        raise HTTPException(status_code=404, detail=f"❌ Không tìm thấy ảnh '{data.image_name}' trong '{IMAGE_DIR}' hoặc các thư mục con!")
+
+    file_exists = True 
+
     output_txt_path = os.path.join(project_root, "img_path.txt")
     try:
         with open(output_txt_path, "w", encoding="utf-8") as f:
@@ -84,10 +101,10 @@ def submit_boxes(data: ScanPayload):
 
     print(f"Dữ liệu nhận được cho ảnh: {full_path}")
     print(f"boxes: {data.boxes}")
-    print(f"Full path: {full_path}")
     
-    detected_results = []
-    detected_results = pipeline.scan_for_objects(data.boxes)
+    # Ép kiểu và gọi pipeline
+    roi_boxes_dict = [obj.model_dump() for obj in data.boxes] if data.boxes else None
+    detected_results = pipeline.scan_for_objects(roi_boxes_dict)
 
     return {
         "status": "success",
@@ -103,20 +120,27 @@ def remove_objects(data: RemovePayload):
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Pipeline chưa sẵn sàng. Vui lòng thử lại sau.")
     
-    final_img_rgb = pipeline.remove_objects(data.target_boxes)
+    target_boxes_dict = [obj.model_dump() for obj in data.target_boxes]
+
+    mask_uint8, lama_rgb, final_img_rgb = pipeline.remove_objects(target_boxes_dict)
 
     output_img_path = os.path.join(output_dir, f"removed_{data.image_name}")
     os.makedirs(os.path.dirname(output_img_path), exist_ok=True)
-
     cv2.imwrite(output_img_path, cv2.cvtColor(final_img_rgb, cv2.COLOR_RGB2BGR))
-
     print(f"✅ Ảnh đã được lưu tại: {output_img_path}")
 
-    final_img_bgr = cv2.cvtColor(final_img_rgb, cv2.COLOR_RGB2BGR)
-    ret, buffer = cv2.imencode('.png', final_img_bgr)
+    def img_to_b64(img_arr, is_rgb=True):
+        if is_rgb:
+            img_arr = cv2.cvtColor(img_arr, cv2.COLOR_RGB2BGR)
+        ret, buffer = cv2.imencode('.png', img_arr)
+        if not ret:
+            raise HTTPException(status_code=500, detail="Lỗi mã hóa ảnh.")
+        return base64.b64encode(buffer).decode('utf-8')
 
-    if not ret:
-        raise HTTPException(status_code=500, detail="Không thể mã hóa ảnh.")
-    
-    return Response(content=buffer.tobytes(), media_type="image/png")
+    return {
+        "status": "success",
+        "mask_b64": img_to_b64(mask_uint8, is_rgb=False), # Mask là đen trắng (grayscale)
+        "lama_b64": img_to_b64(lama_rgb),
+        "sdxl_b64": img_to_b64(final_img_rgb)
+    }
     
